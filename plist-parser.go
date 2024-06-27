@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"embed"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -53,8 +52,6 @@ const YOUTUBE_API = "https://www.googleapis.com/youtube/v3/search"
 
 var searchClient = &http.Client{Timeout: 10 * time.Second}
 
-//go:embed cache.db
-var requestCacheEmbedFile embed.FS
 var requestCache = make(map[string]string)
 
 func searchYoutube(track Track) (*string, error) {

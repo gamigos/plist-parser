@@ -136,7 +136,8 @@ func prompt(reader *bufio.Reader, p *Playlist, library *Library) (*Track, error)
 	// the required searcher signature and finds any pepper whose name contains the searched string.
 	searcher := func(input string, index int) bool {
 		choice := choices[index]
-		name := strings.Replace(strings.ToLower(choice.Track.Name), " ", "", -1)
+
+		name := strings.Replace(strings.ToLower(fmt.Sprintf("%d%s%s", index, choice.Track.Name, choice.Track.Artist)), " ", "", -1)
 		input = strings.Replace(strings.ToLower(input), " ", "", -1)
 
 		return strings.Contains(name, input)

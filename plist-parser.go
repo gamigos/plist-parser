@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/manifoldco/promptui"
 	"howett.net/plist"
 )
 
@@ -99,8 +100,6 @@ func getUrl(searchQuery string) (*url.URL, error) {
 		return nil, err
 	}
 
-	fmt.Println(searchQuery)
-
 	apiKey, ok := os.LookupEnv("YOUTUBE_API_KEY")
 	if !ok {
 		return nil, errors.New("Can't retrieve Youtube URL: 'YOUTUBE_API_KEY' is not set")
@@ -115,33 +114,53 @@ func getUrl(searchQuery string) (*url.URL, error) {
 	return baseUrl, err
 }
 
+type Choice struct {
+	Id    int
+	Track *Track
+}
+
 func prompt(reader *bufio.Reader, p *Playlist, library *Library) (*Track, error) {
-	fmt.Print("Enter song id (\"q\" for exit): ")
+	choices := make([]Choice, len(p.Tracks))
 
-	text, err := reader.ReadString('\n')
+	for i, pTrack := range p.Tracks {
+		track := library.Tracks[(strconv.Itoa(pTrack.TrackID))]
+		choices[i] = Choice{i, &track}
+	}
+
+	const Template = "({{ .Id | cyan }}) {{ .Track.Name | bold }} by {{ .Track.Artist | italic }}"
+
+	templates := &promptui.SelectTemplates{
+		Active:   fmt.Sprintf("%s %s", promptui.IconSelect, Template),
+		Inactive: fmt.Sprintf("%s %s", " ", Template),
+		Selected: "{{ .Track.Name | bold }} by {{ .Track.Artist | italic }}",
+	}
+
+	// A searcher function is implemented which enabled the search mode for the select. The function follows
+	// the required searcher signature and finds any pepper whose name contains the searched string.
+	searcher := func(input string, index int) bool {
+		choice := choices[index]
+		name := strings.Replace(strings.ToLower(choice.Track.Name), " ", "", -1)
+		input = strings.Replace(strings.ToLower(input), " ", "", -1)
+
+		return strings.Contains(name, input)
+	}
+
+	prompt := promptui.Select{
+		Label:             "Select a song",
+		Items:             choices,
+		Templates:         templates,
+		Size:              7,
+		Searcher:          searcher,
+		StartInSearchMode: true,
+	}
+
+	i, _, err := prompt.Run()
 
 	if err != nil {
-		return nil, err
+		return nil, errors.New(fmt.Sprintf("Prompt failed %v\n", err))
 	}
 
-	if text == "q\n" {
-		return nil, nil
-	}
-
-	pTrackId, err := strconv.Atoi(text[:len(text)-1])
-
-	if err != nil {
-		return nil, err
-	}
-
-	if pTrackId < 0 || pTrackId >= len(p.Tracks) {
-		return nil, errors.New("invalid id")
-	}
-
-	pTrack := p.Tracks[pTrackId]
-	track := library.Tracks[(strconv.Itoa(pTrack.TrackID))]
-
-	youtubeUrl, err := searchYoutube(track)
+	youtubeUrl, err := searchYoutube(*choices[i].Track)
 
 	if err != nil {
 		return nil, err
@@ -149,7 +168,7 @@ func prompt(reader *bufio.Reader, p *Playlist, library *Library) (*Track, error)
 
 	fmt.Println(*youtubeUrl)
 
-	return &track, nil
+	return choices[i].Track, nil
 }
 
 func parse(libraryPath, playlistName string) {
@@ -162,7 +181,6 @@ func parse(libraryPath, playlistName string) {
 	}
 
 	plistDecoder := plist.NewDecoder(f)
-	fmt.Println(plistDecoder)
 
 	var library Library
 
@@ -176,18 +194,13 @@ func parse(libraryPath, playlistName string) {
 			continue
 		}
 
-		for i, pTrack := range p.Tracks {
-			track := library.Tracks[(strconv.Itoa(pTrack.TrackID))]
-			fmt.Printf("(%d) \"%s\" by \"%s\"\n", i, track.Name, track.Artist)
-		}
-		fmt.Println()
-
 		reader := bufio.NewReader(os.Stdin)
 
 		track, err := prompt(reader, &p, &library)
 		{
 			if err != nil {
 				fmt.Println(err)
+				return
 			}
 		}
 
@@ -196,6 +209,7 @@ func parse(libraryPath, playlistName string) {
 			track, err = prompt(reader, &p, &library)
 			if err != nil {
 				fmt.Println(err)
+				return
 			}
 		}
 

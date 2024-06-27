@@ -154,6 +154,10 @@ func prompt(reader *bufio.Reader, p *Playlist, library *Library) (*Track, error)
 	i, _, err := prompt.Run()
 
 	if err != nil {
+		if errors.Is(err, promptui.ErrInterrupt) {
+			fmt.Println(err)
+			return nil, nil
+		}
 		return nil, errors.New(fmt.Sprintf("Prompt failed %v\n", err))
 	}
 

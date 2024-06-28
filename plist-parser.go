@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -116,7 +115,7 @@ type Choice struct {
 	Track *Track
 }
 
-func prompt(reader *bufio.Reader, p *Playlist, library *Library) (*Track, error) {
+func prompt(p *Playlist, library *Library) (*Track, error) {
 	choices := make([]Choice, len(p.Tracks))
 
 	for i, pTrack := range p.Tracks {
@@ -174,7 +173,7 @@ func prompt(reader *bufio.Reader, p *Playlist, library *Library) (*Track, error)
 	return choices[i].Track, nil
 }
 
-func parse(libraryPath, playlistName string) {
+func parse(libraryPath string) {
 	fp := os.ExpandEnv(strings.Replace(libraryPath, "~", "$HOME", 1))
 	f, err := os.Open(fp)
 
@@ -192,39 +191,36 @@ func parse(libraryPath, playlistName string) {
 		return
 	}
 
-	for _, p := range library.Playlists {
-		if p.Name != playlistName {
-			continue
-		}
-
-		reader := bufio.NewReader(os.Stdin)
-
-		track, err := prompt(reader, &p, &library)
-		{
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-		}
-
-		for track != nil || err != nil {
-			fmt.Println()
-			track, err = prompt(reader, &p, &library)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-		}
-
+	if len(library.Playlists) == 0 {
+		fmt.Println("No playlists, exiting...")
 		return
 	}
 
-	fmt.Println("Playlist", playlistName, "was not found")
+	playlist := library.Playlists[0]
+
+	track, err := prompt(&playlist, &library)
+	{
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+	}
+
+	for track != nil || err != nil {
+		fmt.Println()
+		track, err = prompt(&playlist, &library)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+	}
+
+	return
 }
 
 func main() {
 	var libraryPath = flag.String("path", "", "Path to the Apple Music library file")
-	var playlistName = "Replay 2024"
 	flag.Parse()
-	parse(*libraryPath, playlistName)
+
+	parse(*libraryPath)
 }

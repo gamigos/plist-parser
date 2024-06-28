@@ -124,11 +124,12 @@ func prompt(reader *bufio.Reader, p *Playlist, library *Library) (*Track, error)
 		choices[i] = Choice{i, &track}
 	}
 
-	const Template = "({{ .Id | cyan }}) {{ .Track.Name | bold }} by {{ .Track.Artist | italic }}"
+	idLen := len(strconv.Itoa(len(choices)))
+	template := fmt.Sprintf(`{{ printf "%%%dd" .Id | cyan }}  {{ .Track.Name | bold }} by {{ .Track.Artist | italic }}`, idLen)
 
 	templates := &promptui.SelectTemplates{
-		Active:   fmt.Sprintf("%s %s", promptui.IconSelect, Template),
-		Inactive: fmt.Sprintf("%s %s", " ", Template),
+		Active:   fmt.Sprintf("%s %s", promptui.IconSelect, template),
+		Inactive: fmt.Sprintf("%s %s", " ", template),
 		Selected: "{{ .Track.Name | bold }} by {{ .Track.Artist | italic }}",
 	}
 

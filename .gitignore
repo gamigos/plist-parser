@@ -1,0 +1,8 @@
+// bin output
+plist-parser
+
+// env
+.env*
+
+// trash
+trash*

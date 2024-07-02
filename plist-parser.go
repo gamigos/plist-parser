@@ -1,16 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
-	"net/http"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/manifoldco/promptui"
 	"howett.net/plist"
@@ -33,81 +29,6 @@ type Playlist struct {
 type Library struct {
 	Tracks    map[string]Track
 	Playlists []Playlist
-}
-
-type YoutubeSearchResp struct {
-	Items []YoutubeSearchRespItem `json:"items"`
-}
-
-type YoutubeSearchRespItem struct {
-	Id YoutubeSearchRespItemId `json:"id"`
-}
-
-type YoutubeSearchRespItemId struct {
-	Video string `json:"videoId"`
-}
-
-const YOUTUBE_API = "https://www.googleapis.com/youtube/v3/search"
-
-var searchClient = &http.Client{Timeout: 10 * time.Second}
-
-var requestCache = make(map[string]string)
-
-func searchYoutube(track Track) (*string, error) {
-	searchStr := fmt.Sprintf("\"%s\" by \"%s\"\n", track.Name, track.Artist)
-	searchUrl, err := getUrl(searchStr)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if videoUrl, ok := requestCache[searchStr]; ok {
-		videoUrl = fmt.Sprintf("%s [cached]", videoUrl)
-		return &videoUrl, nil
-	}
-
-	r, err := searchClient.Get(searchUrl.String())
-	defer r.Body.Close()
-
-	if err != nil {
-		return nil, err
-	}
-
-	var youtubeSearchResp YoutubeSearchResp
-	err = json.NewDecoder(r.Body).Decode(&youtubeSearchResp)
-
-	if err != nil {
-		return nil, err
-	}
-
-	if len(youtubeSearchResp.Items) == 0 {
-		return nil, errors.New("track not found")
-	}
-
-	videoUrl := fmt.Sprintf("https://youtube.com/watch?v=%s", youtubeSearchResp.Items[0].Id.Video)
-	requestCache[searchStr] = videoUrl
-	return &videoUrl, nil
-}
-
-func getUrl(searchQuery string) (*url.URL, error) {
-	baseUrl, err := url.Parse(YOUTUBE_API)
-
-	if err != nil {
-		return nil, err
-	}
-
-	apiKey, ok := os.LookupEnv("YOUTUBE_API_KEY")
-	if !ok {
-		return nil, errors.New("Can't retrieve Youtube URL: 'YOUTUBE_API_KEY' is not set")
-	}
-
-	q := baseUrl.Query()
-	q.Set("key", apiKey)
-	q.Set("type", "video")
-	q.Set("q", searchQuery)
-	baseUrl.RawQuery = q.Encode()
-
-	return baseUrl, err
 }
 
 type Choice struct {
@@ -162,7 +83,7 @@ func prompt(p *Playlist, library *Library) (*Track, error) {
 		return nil, errors.New(fmt.Sprintf("Prompt failed %v\n", err))
 	}
 
-	youtubeUrl, err := searchYoutube(*choices[i].Track)
+	youtubeUrl, err := SearchYoutube(*choices[i].Track)
 
 	if err != nil {
 		return nil, err
@@ -173,8 +94,8 @@ func prompt(p *Playlist, library *Library) (*Track, error) {
 	return choices[i].Track, nil
 }
 
-func parse(libraryPath string) {
-	fp := os.ExpandEnv(strings.Replace(libraryPath, "~", "$HOME", 1))
+func ParsePlaylistPath(playlistPath string) {
+	fp := os.ExpandEnv(strings.Replace(playlistPath, "~", "$HOME", 1))
 	f, err := os.Open(fp)
 
 	if err != nil {
@@ -214,13 +135,23 @@ func parse(libraryPath string) {
 			return
 		}
 	}
-
-	return
 }
 
 func main() {
-	var libraryPath = flag.String("path", "", "Path to the Apple Music library file")
+	var playlistFlagSet = flag.NewFlagSet("playlist", flag.ExitOnError)
+	var playlistPath = playlistFlagSet.String("path", "", "Path to the Apple Music playlist file")
+
+	var urlFlagSet = flag.NewFlagSet("url", flag.ExitOnError)
+	var url = urlFlagSet.String("url", "", "Apple Music URL")
+
 	flag.Parse()
 
-	parse(*libraryPath)
+	switch flag.Arg(0) {
+	case "playlist":
+		playlistFlagSet.Parse(flag.Args()[1:])
+		ParsePlaylistPath(*playlistPath)
+	case "url":
+		urlFlagSet.Parse(flag.Args()[1:])
+		ParseURL(*url)
+	}
 }

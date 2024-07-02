@@ -1,9 +1,18 @@
 ### Print help
 ```
-go run plist-parser.go -help
+go run . -help
 ```
 
 ### Run
+
+## Apple Playlist (`.plist`)
+
 ```
-go run plist-parser.go -path <Apple Music Playlist File (XML)>
+go run . playlist -path <Apple Music Playlist File (XML)>
+```
+
+## Spotify / Apple Music song url
+
+```
+go run . url -url <URL>
 ```

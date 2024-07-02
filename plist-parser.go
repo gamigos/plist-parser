@@ -138,20 +138,15 @@ func ParsePlaylistPath(playlistPath string) {
 }
 
 func main() {
-	var playlistFlagSet = flag.NewFlagSet("playlist", flag.ExitOnError)
-	var playlistPath = playlistFlagSet.String("path", "", "Path to the Apple Music playlist file")
-
-	var urlFlagSet = flag.NewFlagSet("url", flag.ExitOnError)
-	var url = urlFlagSet.String("url", "", "Apple Music URL")
+	var playlistPath = flag.String("path", "", "Path to the Apple Music playlist file")
+	var url = flag.String("url", "", "Apple Music URL")
 
 	flag.Parse()
 
-	switch flag.Arg(0) {
-	case "playlist":
-		playlistFlagSet.Parse(flag.Args()[1:])
+	switch {
+	case *playlistPath != "":
 		ParsePlaylistPath(*playlistPath)
-	case "url":
-		urlFlagSet.Parse(flag.Args()[1:])
+	case *url != "":
 		ParseURL(*url)
 	}
 }

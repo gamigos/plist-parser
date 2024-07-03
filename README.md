@@ -8,11 +8,11 @@ go run . -help
 ## Apple Playlist (`.plist`)
 
 ```
-go run . playlist -path <Apple Music Playlist File (XML)>
+go run . -path <Apple Music Playlist File (XML)>
 ```
 
 ## Spotify / Apple Music song/playlist url
 
 ```
-go run . url -url <URL>
+go run . -url <URL>
 ```

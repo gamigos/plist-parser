@@ -20,12 +20,15 @@ var supportedServices = map[string]bool{
 	"open.spotify.com": true,
 }
 
-var supportedEntityTypes = map[string]bool{
-	// TODO: Candidate for refactoring
-	// "song" & "track" to support Apple Music & Spotify
-	"track":    true,
-	"song":     true,
-	"playlist": true,
+var supportedEntityTypes = map[string]map[string]map[string]bool{
+	"music.apple.com": {
+		"track":     {"song": true, "album": true},
+		"tracklist": {"playlist": true},
+	},
+	"open.spotify.com": {
+		"track":     {"track": true},
+		"tracklist": {"playlist": true},
+	},
 }
 
 var titleRegexps = map[string]*regexp.Regexp{
@@ -33,8 +36,11 @@ var titleRegexps = map[string]*regexp.Regexp{
 	"open.spotify.com": regexp.MustCompile(`(?P<name>.+) - song and lyrics by (?P<author>.+) \| Spotify`),
 }
 
-var entityIdIndice = map[string]int{
+var entityTypeIndex = map[string]int{
+	// https://music.apple.com/es/song/the-morning-after/1020769483
+	// https://music.apple.com/es/album/vaporize/353032605?i=353032612
 	// https://music.apple.com/es/playlist/<name>/<user-id-or-smth>
+	// https://open.spotify.com/track/18H0STg2CPkVKx0AqRsoLQ
 	// https://open.spotify.com/playlist/<playlist-id>
 	"music.apple.com":  2,
 	"open.spotify.com": 1,
@@ -54,8 +60,16 @@ func parseURL(URL string) (ParseResult, error) {
 
 	slog.Info("Parsing", "url", URL)
 	baseUrl, err := url.Parse(strings.ReplaceAll(URL, "\\", ""))
-	// TODO: add query string to localize results for en-US (platform specific prbly)
-	// baseUrl.RawQuery = ""
+
+	// Localize results to parse title correctly
+	q := url.Values{}
+	// Supports this case https://music.apple.com/es/album/vaporize/353032605?i=353032612
+	q.Set("i", baseUrl.Query().Get("i"))
+	q.Set("l", "en-GB")
+	baseUrl.RawQuery = q.Encode()
+
+	fmt.Println(baseUrl.String())
+
 	if err != nil {
 		slog.Error(err.Error())
 		return parseResult, errors.New("URL parse error")
@@ -70,14 +84,23 @@ func parseURL(URL string) (ParseResult, error) {
 
 	slog.Info("Detected supported", "service", service)
 
-	entityType := strings.Split(baseUrl.Path, "/")[entityIdIndice[service]]
-	parseResult.EntityType = entityType
-	if !supportedEntityTypes[entityType] {
-		slog.Error("Unsupported", "entity type", entityType, "supported", supportedEntityTypes)
+	rawEntityType := strings.Split(baseUrl.Path, "/")[entityTypeIndex[service]]
+	entityType := ""
+	if rawEntityType == "album" && q.Get("i") == "" {
+		slog.Error("Bad URL", "url", baseUrl.String())
+		return parseResult, errors.New("bad URL: album url, not song url")
+	}
+	if _, ok := supportedEntityTypes[service]["track"][rawEntityType]; ok {
+		entityType = "track"
+	} else if _, ok := supportedEntityTypes[service]["tracklist"][rawEntityType]; ok {
+		entityType = "tracklist"
+	} else {
+		slog.Error("Unsupported", "entity type", rawEntityType, "supported", supportedEntityTypes[service])
 		return parseResult, errors.New("unsupported entity type")
 	}
+	parseResult.EntityType = entityType
 
-	slog.Info("Detected supported", "entity type", entityType)
+	slog.Info("Detected supported", "entity type", rawEntityType)
 
 	slog.Info("Requesting HTML")
 	resp, err := htmlRequester.Get(baseUrl.String())
@@ -128,7 +151,7 @@ func ParseURL(URL string) {
 
 		slog.Info("Found")
 		fmt.Println(*youtubeUrl)
-	case "playlist":
+	case "tracklist":
 		tracks, err := getTracks(parseResult.RootNode, *titleRegexps[parseResult.Service], 3)
 
 		if err != nil {

@@ -157,8 +157,20 @@ func getTrack(rootNode *html.Node, titleRegexp regexp.Regexp) (Track, error) {
 	return track, errors.New("failed to determine track info")
 }
 
-func getTracks(rootNode *html.Node, titleRegexp regexp.Regexp, limit int) ([]Track, error) {
-	tracks := []Track{}
+func getTrackByURL(url string, titleRegexp regexp.Regexp) (Track, error) {
+	track := Track{}
+
+	parseResult, err := parseURL(url)
+
+	if err != nil {
+		return track, err
+	}
+
+	return getTrack(parseResult.RootNode, titleRegexp)
+}
+
+func getURLs(rootNode *html.Node, limit int) []string {
+	urls := []string{}
 
 	slog.Info("Looking through the metadata")
 	for c := rootNode.FirstChild; c != nil; c = c.NextSibling {
@@ -189,25 +201,10 @@ func getTracks(rootNode *html.Node, titleRegexp regexp.Regexp, limit int) ([]Tra
 					continue
 				}
 
-				url := attrs["content"]
-				parseResult, err := parseURL(url)
-				if err != nil {
-					slog.Error("Error parsing", "url", url)
-					continue
-				}
+				urls = append(urls, attrs["content"])
 
-				track, err := getTrack(parseResult.RootNode, titleRegexp)
-
-				if err != nil {
-					slog.Error("Couldn't extract song info")
-					continue
-				}
-				slog.Info("Parsed song info", "track", track)
-
-				tracks = append(tracks, track)
-
-				if len(tracks) == limit {
-					return tracks, nil
+				if len(urls) == limit {
+					return urls
 				}
 			}
 			break
@@ -215,7 +212,7 @@ func getTracks(rootNode *html.Node, titleRegexp regexp.Regexp, limit int) ([]Tra
 		break
 	}
 
-	return tracks, errors.New("failed to determine tracks info")
+	return urls
 }
 
 func ParseURL(URL string) {
@@ -247,24 +244,37 @@ func ParseURL(URL string) {
 		slog.Info("Found")
 		fmt.Println(*youtubeUrl)
 	case "tracklist":
-		tracks, err := getTracks(parseResult.RootNode, *titleRegexps[parseResult.Service], 3)
+		urls := getURLs(parseResult.RootNode, 3)
+		youtubeUrls := map[string]string{}
 
-		if err != nil {
-			slog.Error("Couldn't extract tracks info")
-			return
-		}
+		for _, url := range urls {
+			track, err := getTrackByURL(url, *titleRegexps[parseResult.Service])
+			// TODO: copypaste from searcher
+			title := fmt.Sprintf("\"%s\" by \"%s\"", track.Name, track.Artist)
 
-		for _, track := range tracks {
-			slog.Info("Searching Youtube", "track", track)
+			if err != nil {
+				slog.Error("Couldn't extract song info")
+				return
+			}
+
+			slog.Info("Parsed song info", "track", track)
+
+			slog.Info("Searching Youtube")
 			youtubeUrl, err := SearchYoutube(track)
 
 			if err != nil {
 				slog.Error(err.Error())
+				youtubeUrls[title] = "-"
 				continue
 			}
 
 			slog.Info("Found")
-			fmt.Println(*youtubeUrl)
+
+			youtubeUrls[title] = *youtubeUrl
+		}
+
+		for title, youtubeUrl := range youtubeUrls {
+			fmt.Printf("\n%s:\n%s\n", title, youtubeUrl)
 		}
 	}
 }

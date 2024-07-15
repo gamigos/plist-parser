@@ -4,6 +4,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log/slog"
 	"os"
 	"strconv"
 	"strings"
@@ -138,6 +139,10 @@ func ParsePlaylistPath(playlistPath string) {
 }
 
 func main() {
+	if _, ok := os.LookupEnv("DEBUG"); ok {
+		slog.SetLogLoggerLevel(slog.LevelDebug)
+	}
+
 	var playlistPath = flag.String("path", "", "Path to the Apple Music playlist file")
 	var url = flag.String("url", "", "Apple Music URL")
 

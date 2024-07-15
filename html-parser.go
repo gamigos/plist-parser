@@ -61,7 +61,7 @@ func parseURL(URL string) (ParseResult, error) {
 		err         error
 	)
 
-	slog.Info("Parsing", "url", URL)
+	slog.Debug("Parsing", "url", URL)
 	baseUrl, err := url.Parse(strings.ReplaceAll(URL, "\\", ""))
 
 	// Localize results to parse title correctly
@@ -70,8 +70,6 @@ func parseURL(URL string) (ParseResult, error) {
 	q.Set("i", baseUrl.Query().Get("i"))
 	q.Set("l", "en-GB")
 	baseUrl.RawQuery = q.Encode()
-
-	fmt.Println(baseUrl.String())
 
 	if err != nil {
 		slog.Error(err.Error())
@@ -85,7 +83,7 @@ func parseURL(URL string) (ParseResult, error) {
 		return parseResult, errors.New("unsupported service")
 	}
 
-	slog.Info("Detected supported", "service", service)
+	slog.Debug("Detected supported", "service", service)
 
 	rawEntityType := strings.Split(baseUrl.Path, "/")[entityTypeIndex[service]]
 	entityType := ""
@@ -107,9 +105,9 @@ func parseURL(URL string) (ParseResult, error) {
 	}
 	parseResult.EntityType = entityType
 
-	slog.Info("Detected supported", "entity type", rawEntityType)
+	slog.Debug("Detected supported", "entity type", rawEntityType)
 
-	slog.Info("Requesting HTML")
+	slog.Debug("Requesting HTML")
 	resp, err := htmlRequester.Get(baseUrl.String())
 	if resp != nil {
 		defer resp.Body.Close()
@@ -119,7 +117,7 @@ func parseURL(URL string) (ParseResult, error) {
 		return parseResult, errors.New("HTML request error")
 	}
 
-	slog.Info("Parsing HTML")
+	slog.Debug("Parsing HTML")
 	rootNode, err := html.Parse(resp.Body)
 	parseResult.RootNode = rootNode
 	if err != nil {
@@ -133,7 +131,7 @@ func parseURL(URL string) (ParseResult, error) {
 func getTrack(rootNode *html.Node, titleRegexp regexp.Regexp) (Track, error) {
 	track := Track{}
 
-	slog.Info("Looking through the metadata")
+	slog.Debug("Looking through the metadata")
 	for c := rootNode.FirstChild; c != nil; c = c.NextSibling {
 		if c.Data != "html" || c.Type != html.ElementNode {
 			continue
@@ -179,7 +177,7 @@ func getTrackByURL(url string, titleRegexp regexp.Regexp) (Track, error) {
 func getURLs(rootNode *html.Node, limit int) []string {
 	urls := []string{}
 
-	slog.Info("Looking through the metadata")
+	slog.Debug("Looking through the metadata")
 	for c := rootNode.FirstChild; c != nil; c = c.NextSibling {
 		if c.Data != "html" || c.Type != html.ElementNode {
 			continue
@@ -238,9 +236,9 @@ func ParseURL(URL string) {
 			slog.Error("Couldn't extract song info")
 			return
 		}
-		slog.Info("Parsed song info", "track", track)
+		slog.Debug("Parsed song info", "track", track)
 
-		slog.Info("Searching Youtube")
+		slog.Debug("Searching Youtube")
 		youtubeUrl, err := SearchYoutube(track)
 
 		if err != nil {
@@ -248,7 +246,7 @@ func ParseURL(URL string) {
 			return
 		}
 
-		slog.Info("Found")
+		slog.Debug("Found")
 		fmt.Println(*youtubeUrl)
 	case "tracklist":
 		urls := getURLs(parseResult.RootNode, REQUEST_LIMIT)
@@ -271,9 +269,9 @@ func ParseURL(URL string) {
 					return
 				}
 
-				slog.Info("Parsed song info", "track", track)
+				slog.Debug("Parsed song info", "track", track)
 
-				slog.Info("Searching Youtube")
+				slog.Debug("Searching Youtube")
 				youtubeUrl, err := SearchYoutube(track)
 
 				if err != nil {
@@ -284,7 +282,7 @@ func ParseURL(URL string) {
 					return
 				}
 
-				slog.Info("Found")
+				slog.Debug("Found")
 
 				lock.Lock()
 				youtubeUrls[title] = *youtubeUrl

@@ -23,12 +23,12 @@ var supportedServices = map[string]bool{
 
 var supportedEntityTypes = map[string]map[string]map[string]bool{
 	"music.apple.com": {
-		"track":     {"song": true, "album": true},
-		"tracklist": {"playlist": true},
+		"track":     {"song": true},
+		"tracklist": {"playlist": true, "album": true},
 	},
 	"open.spotify.com": {
 		"track":     {"track": true},
-		"tracklist": {"playlist": true},
+		"tracklist": {"playlist": true, "album": true},
 	},
 }
 
@@ -89,13 +89,17 @@ func parseURL(URL string) (ParseResult, error) {
 
 	rawEntityType := strings.Split(baseUrl.Path, "/")[entityTypeIndex[service]]
 	entityType := ""
-	if rawEntityType == "album" && q.Get("i") == "" {
-		slog.Error("Bad URL", "url", baseUrl.String())
-		return parseResult, errors.New("bad URL: album url, not song url")
-	}
+	// if rawEntityType == "album" && q.Get("i") == "" {
+	// 	slog.Error("Bad URL", "url", baseUrl.String())
+	// 	return parseResult, errors.New("bad URL: album url, not song url")
+	// }
 	if _, ok := supportedEntityTypes[service]["track"][rawEntityType]; ok {
 		entityType = "track"
 	} else if _, ok := supportedEntityTypes[service]["tracklist"][rawEntityType]; ok {
+		// Link to an item inside tracklist also should be a track
+		if q.Get("i") != "" {
+			entityType = "track"
+		}
 		entityType = "tracklist"
 	} else {
 		slog.Error("Unsupported", "entity type", rawEntityType, "supported", supportedEntityTypes[service])

@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/net/html"
@@ -51,6 +52,8 @@ type ParseResult struct {
 	RootNode   *html.Node
 	EntityType string
 }
+
+const REQUEST_LIMIT = 3
 
 func parseURL(URL string) (ParseResult, error) {
 	var (
@@ -244,34 +247,48 @@ func ParseURL(URL string) {
 		slog.Info("Found")
 		fmt.Println(*youtubeUrl)
 	case "tracklist":
-		urls := getURLs(parseResult.RootNode, 3)
+		urls := getURLs(parseResult.RootNode, REQUEST_LIMIT)
 		youtubeUrls := map[string]string{}
+		lock := sync.Mutex{}
+		wg := sync.WaitGroup{}
+
+		wg.Add(REQUEST_LIMIT)
 
 		for _, url := range urls {
-			track, err := getTrackByURL(url, *titleRegexps[parseResult.Service])
-			// TODO: copypaste from searcher
-			title := fmt.Sprintf("\"%s\" by \"%s\"", track.Name, track.Artist)
+			go func() {
+				defer wg.Done()
 
-			if err != nil {
-				slog.Error("Couldn't extract song info")
-				return
-			}
+				track, err := getTrackByURL(url, *titleRegexps[parseResult.Service])
+				// TODO: copypaste from searcher
+				title := fmt.Sprintf("\"%s\" by \"%s\"", track.Name, track.Artist)
 
-			slog.Info("Parsed song info", "track", track)
+				if err != nil {
+					slog.Error("Couldn't extract song info")
+					return
+				}
 
-			slog.Info("Searching Youtube")
-			youtubeUrl, err := SearchYoutube(track)
+				slog.Info("Parsed song info", "track", track)
 
-			if err != nil {
-				slog.Error(err.Error())
-				youtubeUrls[title] = "-"
-				continue
-			}
+				slog.Info("Searching Youtube")
+				youtubeUrl, err := SearchYoutube(track)
 
-			slog.Info("Found")
+				if err != nil {
+					slog.Error(err.Error())
+					lock.Lock()
+					youtubeUrls[title] = "-"
+					lock.Unlock()
+					return
+				}
 
-			youtubeUrls[title] = *youtubeUrl
+				slog.Info("Found")
+
+				lock.Lock()
+				youtubeUrls[title] = *youtubeUrl
+				lock.Unlock()
+			}()
 		}
+
+		wg.Wait()
 
 		for title, youtubeUrl := range youtubeUrls {
 			fmt.Printf("\n%s:\n%s\n", title, youtubeUrl)

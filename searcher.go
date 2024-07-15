@@ -12,6 +12,12 @@ import (
 
 type YoutubeSearchResp struct {
 	Items []YoutubeSearchRespItem `json:"items"`
+	Error YoutubeSearchRespError  `json:"error"`
+}
+
+type YoutubeSearchRespError struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
 }
 
 type YoutubeSearchRespItem struct {
@@ -63,11 +69,12 @@ func SearchYoutube(track Track) (*string, error) {
 	}
 
 	r, err := searchClient.Get(searchUrl.String())
-	defer r.Body.Close()
 
 	if err != nil {
 		return nil, err
 	}
+
+	defer r.Body.Close()
 
 	var youtubeSearchResp YoutubeSearchResp
 	err = json.NewDecoder(r.Body).Decode(&youtubeSearchResp)
@@ -76,8 +83,8 @@ func SearchYoutube(track Track) (*string, error) {
 		return nil, err
 	}
 
-	if len(youtubeSearchResp.Items) == 0 {
-		return nil, errors.New("track not found")
+	if youtubeSearchResp.Error.Code != 0 {
+		return nil, fmt.Errorf("track not found: %v", youtubeSearchResp.Error)
 	}
 
 	videoUrl := fmt.Sprintf("https://youtube.com/watch?v=%s", youtubeSearchResp.Items[0].Id.Video)

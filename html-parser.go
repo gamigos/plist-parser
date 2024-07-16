@@ -251,6 +251,20 @@ func ParseURL(URL string) {
 		lock := sync.Mutex{}
 		wg := sync.WaitGroup{}
 
+		store := func(title string, url *string) {
+			lock.Lock()
+			defer lock.Unlock()
+
+			if url == nil {
+				youtubeUrls[title] = "-"
+				fmt.Printf("Processed %d/%d\n", len(youtubeUrls), REQUEST_LIMIT)
+				return
+			}
+
+			youtubeUrls[title] = *url
+			fmt.Printf("\rProcessed %d/%d", len(youtubeUrls), REQUEST_LIMIT)
+		}
+
 		for _, url := range urls {
 			wg.Add(1)
 			go func() {
@@ -272,17 +286,13 @@ func ParseURL(URL string) {
 
 				if err != nil {
 					slog.Error(err.Error())
-					lock.Lock()
-					youtubeUrls[title] = "-"
-					lock.Unlock()
+					store(title, nil)
 					return
 				}
 
 				slog.Debug("Found")
 
-				lock.Lock()
-				youtubeUrls[title] = *youtubeUrl
-				lock.Unlock()
+				store(title, youtubeUrl)
 			}()
 
 			if _, ok := os.LookupEnv("SEQUENTIAL"); ok {
@@ -292,6 +302,7 @@ func ParseURL(URL string) {
 
 		wg.Wait()
 
+		fmt.Println()
 		for title, youtubeUrl := range youtubeUrls {
 			fmt.Printf("\n%s:\n%s\n", title, youtubeUrl)
 		}

@@ -88,10 +88,6 @@ func parseURL(URL string) (ParseResult, error) {
 
 	rawEntityType := strings.Split(baseUrl.Path, "/")[entityTypeIndex[service]]
 	entityType := ""
-	// if rawEntityType == "album" && q.Get("i") == "" {
-	// 	slog.Error("Bad URL", "url", baseUrl.String())
-	// 	return parseResult, errors.New("bad URL: album url, not song url")
-	// }
 	if _, ok := supportedEntityTypes[service]["track"][rawEntityType]; ok {
 		entityType = "track"
 	} else if _, ok := supportedEntityTypes[service]["tracklist"][rawEntityType]; ok {

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -254,9 +255,8 @@ func ParseURL(URL string) {
 		lock := sync.Mutex{}
 		wg := sync.WaitGroup{}
 
-		wg.Add(REQUEST_LIMIT)
-
 		for _, url := range urls {
+			wg.Add(1)
 			go func() {
 				defer wg.Done()
 
@@ -288,6 +288,10 @@ func ParseURL(URL string) {
 				youtubeUrls[title] = *youtubeUrl
 				lock.Unlock()
 			}()
+
+			if _, ok := os.LookupEnv("SEQUENTIAL"); ok {
+				wg.Wait()
+			}
 		}
 
 		wg.Wait()

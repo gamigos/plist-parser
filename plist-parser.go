@@ -11,11 +11,13 @@ import (
 
 	"github.com/manifoldco/promptui"
 	"howett.net/plist"
+
+	badger "github.com/dgraph-io/badger/v4"
 )
 
 type Track struct {
-	Name   string
-	Artist string
+	Name   string `json:"name"`
+	Artist string `json:"artist"`
 }
 
 type PlaylistItem struct {
@@ -95,7 +97,7 @@ func prompt(p *Playlist, library *Library) (*Track, error) {
 	return choices[i].Track, nil
 }
 
-func ParsePlaylistPath(playlistPath string) {
+func ParsePlaylistPath(playlistPath string, db *badger.DB) {
 	fp := os.ExpandEnv(strings.Replace(playlistPath, "~", "$HOME", 1))
 	f, err := os.Open(fp)
 
@@ -139,9 +141,20 @@ func ParsePlaylistPath(playlistPath string) {
 }
 
 func main() {
+	badgerOptions := badger.DefaultOptions("/tmp/badger")
+	badgerOptions.Logger = nil
+
 	if _, ok := os.LookupEnv("DEBUG"); ok {
 		slog.SetLogLoggerLevel(slog.LevelDebug)
+		badgerOptions.Logger = badger.DefaultOptions("/tmp/badger").Logger
 	}
+
+	db, err := badger.Open(badgerOptions)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer db.Close()
 
 	var playlistPath = flag.String("path", "", "Path to the Apple Music playlist file")
 	var url = flag.String("url", "", "Apple Music URL")
@@ -150,8 +163,8 @@ func main() {
 
 	switch {
 	case *playlistPath != "":
-		ParsePlaylistPath(*playlistPath)
+		ParsePlaylistPath(*playlistPath, db)
 	case *url != "":
-		ParseURL(*url)
+		ParseURL(*url, db)
 	}
 }

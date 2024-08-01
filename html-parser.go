@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	badger "github.com/dgraph-io/badger/v4"
 	"golang.org/x/net/html"
 )
 
@@ -35,7 +37,7 @@ var supportedEntityTypes = map[string]map[string]map[string]bool{
 
 var titleRegexps = map[string]*regexp.Regexp{
 	"music.apple.com":  regexp.MustCompile("\u200e(?P<name>.+) – Song by (?P<author>.+) – Apple\u00a0Music"),
-	"open.spotify.com": regexp.MustCompile(`(?P<name>.+) - song and lyrics by (?P<author>.+) \| Spotify`),
+	"open.spotify.com": regexp.MustCompile(`(?P<name>.+) - song by (?P<author>.+) \| Spotify`),
 }
 
 var entityTypeIndex = map[string]int{
@@ -54,7 +56,7 @@ type ParseResult struct {
 	EntityType string
 }
 
-const REQUEST_LIMIT = 3
+const REQUEST_LIMIT = 30
 
 func parseURL(URL string) (ParseResult, error) {
 	var (
@@ -217,7 +219,7 @@ func getURLs(rootNode *html.Node, limit int) []string {
 	return urls
 }
 
-func ParseURL(URL string) {
+func ParseURL(URL string, db *badger.DB) {
 	parseResult, err := parseURL(URL)
 
 	if err != nil {
@@ -233,25 +235,59 @@ func ParseURL(URL string) {
 			slog.Error("Couldn't extract song info")
 			return
 		}
-		slog.Debug("Parsed song info", "track", track)
 
-		slog.Debug("Searching Youtube")
-		youtubeUrl, err := SearchYoutube(track)
+		trackEncoded, err := json.Marshal(track)
 
 		if err != nil {
-			slog.Error(err.Error())
+			slog.Error("Error JSON encoding the track")
 			return
 		}
 
-		slog.Debug("Found")
-		fmt.Println(*youtubeUrl)
+		slog.Debug("Parsed song info", "track", track)
+
+		slog.Debug("Searching Youtube")
+
+		slog.Debug("Trying the cache")
+		err = db.View(func(txn *badger.Txn) error {
+			item, err := txn.Get(trackEncoded)
+
+			if err != nil {
+				return err
+			}
+
+			value, err := item.ValueCopy(nil)
+
+			if err != nil {
+				return err
+			}
+
+			youtubeUrl := string(value)
+
+			slog.Debug("Found (cached)")
+			fmt.Println(youtubeUrl)
+
+			return nil
+		})
+
+		if err != nil {
+			youtubeUrl, err := SearchYoutube(track)
+
+			if err != nil {
+				slog.Error(err.Error())
+				return
+			}
+
+			slog.Debug("Found")
+			fmt.Println(*youtubeUrl)
+		}
+
 	case "tracklist":
 		urls := getURLs(parseResult.RootNode, REQUEST_LIMIT)
 		youtubeUrls := map[string]string{}
 		lock := sync.Mutex{}
 		wg := sync.WaitGroup{}
 
-		store := func(title string, url *string) {
+		storeResults := func(title string, url *string) {
 			lock.Lock()
 			defer lock.Unlock()
 
@@ -271,6 +307,7 @@ func ParseURL(URL string) {
 				defer wg.Done()
 
 				track, err := getTrackByURL(url, *titleRegexps[parseResult.Service])
+
 				// TODO: copypaste from searcher
 				title := fmt.Sprintf("\"%s\" by \"%s\"", track.Name, track.Artist)
 
@@ -279,20 +316,74 @@ func ParseURL(URL string) {
 					return
 				}
 
-				slog.Debug("Parsed song info", "track", track)
-
-				slog.Debug("Searching Youtube")
-				youtubeUrl, err := SearchYoutube(track)
+				trackEncoded, err := json.Marshal(track)
 
 				if err != nil {
-					slog.Error(err.Error())
-					store(title, nil)
+					slog.Error("Error JSON encoding the track")
 					return
 				}
 
-				slog.Debug("Found")
+				slog.Debug("Parsed song info", "track", track)
 
-				store(title, youtubeUrl)
+				slog.Debug("Searching Youtube")
+
+				slog.Debug("Trying the cache")
+				err = db.View(func(txn *badger.Txn) error {
+					item, err := txn.Get(trackEncoded)
+
+					if err != nil {
+						return err
+					}
+
+					value, err := item.ValueCopy(nil)
+
+					if err != nil {
+						return err
+					}
+
+					youtubeUrl := string(value)
+
+					slog.Debug("Found (cached)")
+					storeResults(title, &youtubeUrl)
+
+					return nil
+				})
+
+				if err != nil {
+					youtubeUrl, err := SearchYoutube(track)
+
+					if err != nil {
+						slog.Error(err.Error())
+						storeResults(title, nil)
+						return
+					}
+
+					err = func() error {
+						lock.Lock()
+						defer lock.Unlock()
+
+						err := db.Update(func(txn *badger.Txn) error {
+							err := txn.Set(trackEncoded, []byte(*youtubeUrl))
+							return err
+						})
+
+						if err != nil {
+							return err
+						}
+
+						return nil
+					}()
+
+					if err != nil {
+						slog.Error(err.Error())
+						return
+					}
+
+					slog.Debug("Found")
+					storeResults(title, youtubeUrl)
+
+					return
+				}
 			}()
 
 			if _, ok := os.LookupEnv("SEQUENTIAL"); ok {
